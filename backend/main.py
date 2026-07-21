@@ -23,6 +23,8 @@ client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 logs = []  # in-memory log store
 
+START_TIME = time.time()
+
 class QueryRequest(BaseModel):
     query: str
 
@@ -64,4 +66,27 @@ def get_logs():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    total_queries = len(logs)
+    avg_latency_ms = (
+        round(sum(l["latency_ms"] for l in logs) / total_queries)
+        if total_queries > 0 else 0
+    )
+    avg_tokens = (
+        round(sum(l["tokens"] for l in logs) / total_queries)
+        if total_queries > 0 else 0
+    )
+    # Claude Sonnet pricing: $3 per 1M input tokens (approximate blended rate)
+    cost_per_query_usd = round((avg_tokens / 1_000_000) * 3, 6) if avg_tokens > 0 else 0
+
+    uptime_seconds = int(time.time() - START_TIME)
+    hours, remainder = divmod(uptime_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    return {
+        "status": "ok",
+        "uptime": f"{hours}h {minutes}m {seconds}s",
+        "total_queries": total_queries,
+        "avg_latency_ms": avg_latency_ms,
+        "avg_tokens_per_query": avg_tokens,
+        "estimated_cost_per_query_usd": cost_per_query_usd,
+    }
